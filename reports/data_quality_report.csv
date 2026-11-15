@@ -1,0 +1,11 @@
+Metric,Value
+Original Records,198758
+Valid Records,198743
+Invalid Records,15
+Exact Duplicates Removed,0
+Conflicting Duplicate Records,0
+Unique Stations,39
+PM2.5 Records,101738
+PM10 Records,97005
+Wide Format Rows,102334
+Low Coverage Records,11196
