@@ -8,9 +8,9 @@ The project analyzes historical PM2.5 and PM10 measurements collected from monit
 
 <p align="center">
 
-  **Live Dashboard:** [ADD YOUR STREAMLIT URL HERE](ADD_YOUR_STREAMLIT_URL)
+  **Live Dashboard:** [APP LINK](https://ncrairlens.streamlit.app/)
 
-  **GitHub Repository:** [NCRAirLens](ADD_YOUR_GITHUB_REPOSITORY_URL)
+  **GitHub Repository:** [NCRAirLens](https://github.com/sj-builds/delhi-air-quality-dashboard)
 
 </p>
 
