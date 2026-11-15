@@ -186,7 +186,7 @@ Follow these steps to run NCRAirLens on your local machine.
 ### 1. Clone the Repository
 
 ```bash
-git clone YOUR_GITHUB_REPOSITORY_URL
+git clone https://github.com/sj-builds/delhi-air-quality-dashboard.git
 ```
 
 ### 2. Navigate to the Project Directory
