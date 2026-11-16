@@ -8,9 +8,9 @@ The project analyzes historical PM2.5 and PM10 measurements collected from monit
 
 <p align="center">
 
-  **Live Dashboard:** [ADD YOUR STREAMLIT URL HERE](ADD_YOUR_STREAMLIT_URL)
+  **Live Dashboard:** [APP LINK](https://ncrairlens.streamlit.app/)
 
-  **GitHub Repository:** [NCRAirLens](ADD_YOUR_GITHUB_REPOSITORY_URL)
+  **GitHub Repository:** [NCRAirLens](https://github.com/sj-builds/delhi-air-quality-dashboard)
 
 </p>
 
@@ -186,7 +186,7 @@ Follow these steps to run NCRAirLens on your local machine.
 ### 1. Clone the Repository
 
 ```bash
-git clone YOUR_GITHUB_REPOSITORY_URL
+git clone https://github.com/sj-builds/delhi-air-quality-dashboard.git
 ```
 
 ### 2. Navigate to the Project Directory
