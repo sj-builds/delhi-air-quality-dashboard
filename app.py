@@ -12,7 +12,7 @@ import streamlit as st
 
 # ============================================================================
 # DELHI AIR QUALITY ANALYTICS DASHBOARD
-# Reads the existing wide, cleaned dataset produced by clean_air_quality.py.
+# Reads the cleaned wide dataset produced by clean_air_quality.py.
 # No changes are made to source or processed data.
 # ============================================================================
 
@@ -31,12 +31,13 @@ PM10 = "PM10_mean"
 POLLUTANT_COLUMNS = [PM25, PM10]
 POLLUTANT_LABELS = {PM25: "PM2.5", PM10: "PM10"}
 POLLUTANT_COLORS = {"PM2.5": "#38BDF8", "PM10": "#F5B942"}
-POLLUTANT_UNITS = "µg/m³"  # Confirmed in the source measurement sample.
+POLLUTANT_UNITS = "µg/m³"
 SEASON_ORDER = ["Winter", "Summer", "Monsoon", "Post-Monsoon"]
 WEEKDAY_ORDER = [
     "Monday", "Tuesday", "Wednesday", "Thursday",
     "Friday", "Saturday", "Sunday",
 ]
+CHART_CONFIG = {"displaylogo": False}
 
 
 # ============================================================================
@@ -65,9 +66,7 @@ st.markdown(
         color: var(--text);
     }
 
-    html, body, [class*="css"] {
-        font-family: 'DM Sans', sans-serif;
-    }
+    html, body, [class*="css"] { font-family: 'DM Sans', sans-serif; }
 
     [data-testid="stHeader"] { background: rgba(11, 18, 32, .84); }
 
@@ -75,7 +74,6 @@ st.markdown(
         background: #0e192a;
         border-right: 1px solid var(--line);
     }
-
     [data-testid="stSidebar"] > div:first-child { padding-top: 1.25rem; }
 
     h1, h2, h3 {
@@ -148,7 +146,7 @@ st.markdown(
         line-height: 1.15;
         margin-top: .45rem;
     }
-    .metric-note { color: #8094ad; font-size: .70rem; margin-top: .42rem; }
+    .metric-note { color: #8ea0b8; font-size: .72rem; margin-top: .42rem; }
     .small-note { color: #91a2b8; font-size: .78rem; }
     .stTabs [data-baseweb="tab-list"] {
         gap: .35rem;
@@ -156,9 +154,20 @@ st.markdown(
     }
     .stTabs [data-baseweb="tab"] { color: #9fb0c5; padding: .65rem .95rem; }
     .stTabs [aria-selected="true"] { color: #7dd3fc !important; }
+    .stTabs [data-baseweb="tab"]:focus-visible,
+    button:focus-visible,
+    input:focus-visible {
+        outline: 2px solid #7dd3fc !important;
+        outline-offset: 2px;
+    }
     div[data-testid="stDownloadButton"] button { border-radius: 10px; }
     div[data-testid="stAlert"] { border-radius: 12px; }
     #MainMenu, footer { visibility: hidden; }
+
+    @media (max-width: 640px) {
+        .hero { padding: 1.15rem 1.1rem; }
+        .metric-card { min-height: 0; margin-bottom: .5rem; }
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -172,7 +181,7 @@ st.markdown(
 @st.cache_data(show_spinner="Loading and validating Delhi air-quality data...")
 def load_data(file_path: str, file_mtime: float) -> pd.DataFrame:
     """Load the cleaned wide dataset and validate its analytical structure."""
-    del file_mtime  # Included in the cache key so edits to the CSV invalidate cache.
+    del file_mtime  # Part of the cache key so CSV edits invalidate the cache.
 
     path = Path(file_path)
     if not path.exists():
@@ -199,7 +208,6 @@ def load_data(file_path: str, file_mtime: float) -> pd.DataFrame:
     negative_values_replaced = 0
     for column in POLLUTANT_COLUMNS:
         data[column] = pd.to_numeric(data[column], errors="coerce")
-        # Negative particulate concentration is not physically meaningful.
         negative_mask = data[column] < 0
         negative_values_replaced += int(negative_mask.sum())
         data.loc[negative_mask, column] = np.nan
@@ -207,19 +215,21 @@ def load_data(file_path: str, file_mtime: float) -> pd.DataFrame:
     data["station_id"] = data["station_id"].astype(str)
     data["station_name"] = data["station_name"].fillna(data["station_id"]).astype(str)
 
-    # The cleaning pipeline uses these same seasonal month boundaries.
-    # Deriving them from the date prevents stale or inconsistent text labels.
     month = data["period_start"].dt.month
     data["season"] = np.select(
-        [month.isin([12, 1, 2]), month.isin([3, 4, 5]), month.isin([6, 7, 8, 9]), month.isin([10, 11])],
-        ["Winter", "Summer", "Monsoon", "Post-Monsoon"],
+        [
+            month.isin([12, 1, 2]),
+            month.isin([3, 4, 5]),
+            month.isin([6, 7, 8, 9]),
+            month.isin([10, 11]),
+        ],
+        SEASON_ORDER,
         default="Unknown",
     )
     data["day_of_week"] = data["period_start"].dt.day_name()
     data["year"] = data["period_start"].dt.year
     data["year_month"] = data["period_start"].dt.to_period("M").astype(str)
 
-    # A wide cleaned table should have one row per station and date.
     exact_duplicates_removed = int(data.duplicated().sum())
     data = data.drop_duplicates()
     duplicate_key_mask = data.duplicated(["station_id", "period_start"], keep=False)
@@ -256,11 +266,12 @@ def make_station_options(data: pd.DataFrame) -> dict[str, str]:
     name_counts = station_map["station_name"].value_counts()
     options: dict[str, str] = {}
     for row in station_map.itertuples(index=False):
-        name = row.station_name
-        station_id = row.station_id
-        # Disambiguate duplicate station names while preserving readable labels.
-        label = f"{name} ({station_id})" if name_counts[name] > 1 else name
-        options[label] = station_id
+        label = (
+            f"{row.station_name} ({row.station_id})"
+            if name_counts[row.station_name] > 1
+            else row.station_name
+        )
+        options[label] = row.station_id
     return options
 
 
@@ -317,6 +328,10 @@ def style_chart(fig: go.Figure, height: int = 390) -> go.Figure:
     return fig
 
 
+def show_chart(fig: go.Figure, height: int = 390) -> None:
+    st.plotly_chart(style_chart(fig, height), width="stretch", config=CHART_CONFIG)
+
+
 def melt_pollutants(
     data: pd.DataFrame,
     index_columns: list[str],
@@ -334,10 +349,9 @@ def melt_pollutants(
 
 
 def download_csv(data: pd.DataFrame, filename: str, label: str) -> None:
-    csv_data = data.to_csv(index=False).encode("utf-8-sig")
     st.download_button(
         label=label,
-        data=csv_data,
+        data=data.to_csv(index=False).encode("utf-8-sig"),
         file_name=filename,
         mime="text/csv",
         width="content",
@@ -390,7 +404,7 @@ with st.sidebar:
 
     st.markdown("#### Observation period")
     chosen_dates = st.date_input(
-        "Choose start and end dates",
+        "Observation period: choose start and end dates",
         value=(min_date, max_date),
         min_value=min_date,
         max_value=max_date,
@@ -401,10 +415,8 @@ with st.sidebar:
         if len(chosen_dates) >= 2:
             start_date, end_date = chosen_dates[0], chosen_dates[-1]
         elif len(chosen_dates) == 1:
-            # Streamlit can return a one-element tuple while a range is being selected.
             start_date = end_date = chosen_dates[0]
         else:
-            # A cleared range falls back to the full available period.
             start_date, end_date = min_date, max_date
     elif chosen_dates is None:
         start_date, end_date = min_date, max_date
@@ -413,20 +425,21 @@ with st.sidebar:
 
     st.markdown("#### Monitoring stations")
     selected_station_labels = st.multiselect(
-        "Leave empty to include all stations",
+        "Monitoring stations (leave empty to include all)",
         options=station_labels,
         default=[],
         placeholder="All monitoring stations",
         label_visibility="collapsed",
     )
-    if selected_station_labels:
-        selected_station_ids = [station_options[label] for label in selected_station_labels]
-    else:
-        selected_station_ids = list(station_options.values())
+    selected_station_ids = (
+        [station_options[label] for label in selected_station_labels]
+        if selected_station_labels
+        else list(station_options.values())
+    )
 
     st.markdown("#### Seasons")
     selected_seasons = st.multiselect(
-        "Leave empty to include all seasons",
+        "Seasons (leave empty to include all)",
         options=SEASON_ORDER,
         default=[],
         placeholder="All seasons",
@@ -464,9 +477,7 @@ pm10_average = filtered[PM10].mean()
 station_count = filtered["station_id"].nunique()
 record_count = len(filtered)
 paired_count = len(paired)
-paired_correlation = (
-    paired[PM25].corr(paired[PM10]) if paired_count >= 2 else np.nan
-)
+paired_correlation = paired[PM25].corr(paired[PM10]) if paired_count >= 2 else np.nan
 
 
 # ============================================================================
@@ -529,8 +540,7 @@ with overview_tab:
         .groupby("Month")[POLLUTANT_COLUMNS]
         .mean()
     )
-    # Reinsert empty months so a line chart cannot imply continuous coverage
-    # across periods for which the dataset contains no observations.
+    # Reinsert empty months so lines do not imply coverage where none exists.
     complete_months = pd.period_range(
         start=pd.Timestamp(start_date).to_period("M"),
         end=pd.Timestamp(end_date).to_period("M"),
@@ -559,8 +569,8 @@ with overview_tab:
             title="Monthly particulate-matter trend",
         )
         fig.update_traces(line_width=2.6, marker_size=5, connectgaps=False)
-        fig.update_xaxes(tickformat="%b\n%Y")
-        st.plotly_chart(style_chart(fig, 425), width="stretch", config={"displaylogo": False})
+        fig.update_xaxes(tickformat="%b<br>%Y")
+        show_chart(fig, 425)
 
     with right_column:
         seasonal_summary = (
@@ -586,7 +596,7 @@ with overview_tab:
             },
             title="Seasonal comparison",
         )
-        st.plotly_chart(style_chart(fig, 425), width="stretch", config={"displaylogo": False})
+        show_chart(fig, 425)
 
     st.subheader("Weekday pattern")
     weekday_summary = (
@@ -611,7 +621,7 @@ with overview_tab:
         },
         title="Average concentration by weekday",
     )
-    st.plotly_chart(style_chart(fig, 380), width="stretch", config={"displaylogo": False})
+    show_chart(fig, 380)
 
     st.subheader("Relationship between PM2.5 and PM10")
     correlation_column, scatter_column = st.columns([1, 2], gap="large")
@@ -641,7 +651,7 @@ with overview_tab:
                 title="Paired station-date observations",
             )
             fig.update_traces(marker=dict(color="#38BDF8", size=5))
-            st.plotly_chart(style_chart(fig, 385), width="stretch", config={"displaylogo": False})
+            show_chart(fig, 385)
         else:
             st.info("At least two paired observations are required to calculate correlation.")
 
@@ -657,15 +667,15 @@ with trends_tab:
         horizontal=True,
     )
     period_codes = {"Monthly": "M", "Quarterly": "Q", "Yearly": "Y"}
+    period_code = period_codes[frequency]
+
     trend_data = filtered.copy()
-    trend_data["Period"] = (
-        trend_data["period_start"].dt.to_period(period_codes[frequency]).dt.to_timestamp()
-    )
+    trend_data["Period"] = trend_data["period_start"].dt.to_period(period_code).dt.to_timestamp()
     trend_summary = trend_data.groupby("Period")[POLLUTANT_COLUMNS].mean()
     complete_periods = pd.period_range(
-        start=pd.Timestamp(start_date).to_period(period_codes[frequency]),
-        end=pd.Timestamp(end_date).to_period(period_codes[frequency]),
-        freq=period_codes[frequency],
+        start=pd.Timestamp(start_date).to_period(period_code),
+        end=pd.Timestamp(end_date).to_period(period_code),
+        freq=period_code,
     ).to_timestamp()
     trend_summary = (
         trend_summary.reindex(complete_periods)
@@ -688,7 +698,7 @@ with trends_tab:
         title=f"{frequency} average particulate-matter concentration",
     )
     fig.update_traces(connectgaps=False)
-    st.plotly_chart(style_chart(fig, 455), width="stretch", config={"displaylogo": False})
+    show_chart(fig, 455)
 
     st.subheader("Seasonal statistics")
     season_statistics = (
@@ -700,8 +710,12 @@ with trends_tab:
         f"{POLLUTANT_LABELS[pollutant]}_{statistic}"
         for pollutant, statistic in season_statistics.columns
     ]
+    season_formats = {
+        column: "{:,.0f}" if column.endswith("_count") else "{:,.2f}"
+        for column in season_statistics.columns
+    }
     st.dataframe(
-        season_statistics.style.format("{:,.2f}", na_rep="—"),
+        season_statistics.style.format(season_formats, na_rep="—"),
         width="stretch",
     )
 
@@ -730,14 +744,11 @@ with trends_tab:
         coverage,
         x="Month",
         y="Station_date_records",
-        labels={
-            "Month": "Month",
-            "Station_date_records": "Station-date records",
-        },
+        labels={"Month": "Month", "Station_date_records": "Station-date records"},
         title="Available station-date records by month",
     )
     fig.update_traces(marker_color="#648CFF")
-    st.plotly_chart(style_chart(fig, 350), width="stretch", config={"displaylogo": False})
+    show_chart(fig, 350)
     st.dataframe(coverage, width="stretch", hide_index=True)
     download_csv(coverage, "delhi_monthly_data_coverage.csv", "Download monthly coverage")
 
@@ -764,13 +775,17 @@ with stations_tab:
         st.info("No valid measurements are available for this pollutant in the selected filters.")
     else:
         maximum_observations = int(station_statistics["Observations"].max())
-        minimum_observations = st.slider(
-            "Minimum observations required for ranking",
-            min_value=1,
-            max_value=max(1, maximum_observations),
-            value=1,
-            help="Increase this threshold to exclude stations with limited data coverage.",
-        )
+        if maximum_observations > 1:
+            minimum_observations = st.slider(
+                "Minimum observations required for ranking",
+                min_value=1,
+                max_value=maximum_observations,
+                value=1,
+                help="Increase this threshold to exclude stations with limited data coverage.",
+            )
+        else:
+            minimum_observations = 1
+
         eligible_stations = station_statistics.loc[
             station_statistics["Observations"] >= minimum_observations
         ].copy()
@@ -788,18 +803,17 @@ with stations_tab:
                 axis=1,
             )
             top_maximum = min(30, len(eligible_stations))
-            default_top = min(10, top_maximum)
-            top_n = st.slider(
-                "Number of stations to display",
-                min_value=1,
-                max_value=top_maximum,
-                value=default_top,
-            )
-            ranked = (
-                eligible_stations.sort_values("Mean", ascending=False)
-                .head(top_n)
-            )
+            if top_maximum > 1:
+                top_n = st.slider(
+                    "Number of stations to display",
+                    min_value=1,
+                    max_value=top_maximum,
+                    value=min(10, top_maximum),
+                )
+            else:
+                top_n = 1
 
+            ranked = eligible_stations.sort_values("Mean", ascending=False).head(top_n)
             chart_data = ranked.sort_values("Mean", ascending=True)
             fig = px.bar(
                 chart_data,
@@ -826,18 +840,20 @@ with stations_tab:
                 cliponaxis=False,
             )
             fig.update_layout(yaxis=dict(automargin=True))
-            st.plotly_chart(
-                style_chart(fig, max(420, len(ranked) * 35)),
-                width="stretch",
-                config={"displaylogo": False},
-            )
+            show_chart(fig, max(420, len(ranked) * 35))
 
             st.dataframe(
-                ranked.style.format({"Mean": "{:,.2f}", "Median": "{:,.2f}"}),
+                ranked.drop(columns=["station_display"], errors="ignore").style.format(
+                    {"Mean": "{:,.2f}", "Median": "{:,.2f}"}
+                ),
                 width="stretch",
                 hide_index=True,
             )
-            download_csv(ranked, "delhi_station_comparison.csv", "Download station comparison")
+            download_csv(
+                ranked.drop(columns=["station_display"], errors="ignore"),
+                "delhi_station_comparison.csv",
+                "Download station comparison",
+            )
 
     st.subheader("Station data coverage")
     station_coverage = (
@@ -886,33 +902,31 @@ with explorer_tab:
     display_data = display_data.sort_values("period_start")
     st.caption(f"{len(display_data):,} records match the current filters and search.")
 
-    # Avoid sending the entire 100k+ row dataset to the browser at once.
-    rows_per_page = st.selectbox(
-        "Rows per page",
-        options=[100, 250, 500, 1000],
-        index=1,
-    )
-    total_pages = max(1, int(np.ceil(len(display_data) / rows_per_page)))
-    page_number = st.number_input(
-        "Page",
-        min_value=1,
-        max_value=total_pages,
-        value=1,
-        step=1,
-    )
-    first_row = (int(page_number) - 1) * rows_per_page
-    last_row = min(first_row + rows_per_page, len(display_data))
-    st.caption(
-        f"Showing rows {first_row + 1:,}-{last_row:,} of {len(display_data):,}. "
-        "The download includes every matching record, not just this page."
-    )
-    st.dataframe(
-        display_data.iloc[first_row:last_row][visible_columns],
-        width="stretch",
-        hide_index=True,
-        height=480,
-    )
-    download_csv(display_data, "delhi_air_quality_filtered.csv", "Download all matching observations (CSV)")
+    if display_data.empty:
+        st.info("No records match this search.")
+    else:
+        rows_per_page = st.selectbox("Rows per page", options=[100, 250, 500, 1000], index=1)
+        total_pages = max(1, int(np.ceil(len(display_data) / rows_per_page)))
+        page_number = st.number_input(
+            "Page",
+            min_value=1,
+            max_value=total_pages,
+            value=1,
+            step=1,
+        )
+        first_row = (int(page_number) - 1) * rows_per_page
+        last_row = min(first_row + rows_per_page, len(display_data))
+        st.caption(
+            f"Showing rows {first_row + 1:,}-{last_row:,} of {len(display_data):,}. "
+            "The download includes every matching record, not just this page."
+        )
+        st.dataframe(
+            display_data.iloc[first_row:last_row][visible_columns],
+            width="stretch",
+            hide_index=True,
+            height=480,
+        )
+        download_csv(display_data, "delhi_air_quality_filtered.csv", "Download all matching observations (CSV)")
 
     st.subheader("Data quality snapshot")
     quality_col_1, quality_col_2, quality_col_3, quality_col_4 = st.columns(4)
@@ -935,10 +949,9 @@ with explorer_tab:
         both_available = int(display_data[POLLUTANT_COLUMNS].notna().all(axis=1).sum())
         metric_card("BOTH AVAILABLE", f"{both_available:,}", "Paired pollutant measurements")
 
-    # Preserve extreme readings but make them visible for quality review.
     st.markdown(
-        '<p class="small-note">High values are retained rather than silently removed. ' 
-        'Review them against the source data before deciding whether they are valid observations.</p>',
+        '<p class="small-note">High values are retained rather than silently removed. '
+        "Review them against the source data before deciding whether they are valid observations.</p>",
         unsafe_allow_html=True,
     )
     extreme_threshold = st.number_input(
@@ -947,10 +960,14 @@ with explorer_tab:
         value=500.0,
         step=50.0,
     )
+    extreme_columns = [
+        column
+        for column in ["period_start", "station_id", "station_name", PM25, PM10]
+        if column in display_data.columns
+    ]
     extreme_rows = display_data.loc[
-        (display_data[PM25] > extreme_threshold)
-        | (display_data[PM10] > extreme_threshold),
-        [column for column in ["period_start", "station_id", "station_name", PM25, PM10] if column in display_data.columns],
+        (display_data[PM25] > extreme_threshold) | (display_data[PM10] > extreme_threshold),
+        extreme_columns,
     ].copy()
     st.caption(f"{len(extreme_rows):,} station-date rows exceed the selected review threshold.")
     if not extreme_rows.empty:
